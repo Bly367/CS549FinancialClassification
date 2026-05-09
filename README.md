@@ -27,7 +27,8 @@ ProjectCS549/
 ├── scripts/
 │   ├── build_dataset.py                  # stage 1: produce merged_clean.csv + train/test split
 │   ├── prepare_features.py               # stage 2: fit transformers, save feature arrays
-│   └── train_random_forest.py            # stage 3a: Random Forest (Brian)
+│   ├── train_random_forest.py            # stage 3a: Random Forest (Brian)
+│   └── train_svm.py                      # stage 3b: Support Vector Machine (Bryce)
 ├── notebooks/
 │   └── 01_exploratory_analysis.ipynb
 ├── tests/
@@ -88,6 +89,8 @@ python -m scripts.prepare_features --tfidf-max-features 10000
 
 ### Stage 3 — train a model
 
+Random Forest (Brian):
+
 ```bash
 python -m scripts.train_random_forest                 # full grid search (~45s)
 python -m scripts.train_random_forest --quick         # smaller grid (~10s)
@@ -101,6 +104,18 @@ Outputs to `models/random_forest/`:
 - `rf_metrics.json` — accuracy, per-class P/R/F1, runtime, best hyperparameters
 - `rf_classification_report.csv`
 - `rf_confusion_matrix.csv`
+
+Support Vector Machine (Bryce):
+
+```bash
+python -m scripts.train_svm                  # full grid search (~25s)
+python -m scripts.train_svm --quick          # smaller grid (~10s)
+python -m scripts.train_svm --no-grid-search # fit a single RBF SVM with defaults
+```
+
+Outputs to `models/svm/` (`svm_model.joblib`, `svm_label_encoder.joblib`,
+`svm_metrics.json`, `svm_classification_report.csv`,
+`svm_confusion_matrix.csv`).
 
 ### Tests
 
@@ -252,17 +267,59 @@ Best hyperparameters found: `n_estimators=200`, `max_depth=40`,
   final report should call this out as a limitation and an opportunity for
   the comparative analysis.
 
-### SVM (Bryce) and MLP (Kien)
+### Support Vector Machine (Bryce)
 
-Stubs to come. Both models can either:
-- Load `data/processed/{X_train,X_test}.npz` + `y_*.npy` produced by
-  `scripts/prepare_features.py` (the SMOTE-balanced training arrays), or
-- Build their own Pipeline like `scripts/train_random_forest.py` does so
-  CV is leakage-free.
+Built in `scripts/train_svm.py`. Mirrors the Random Forest script for an
+apples-to-apples comparison: same `ColumnTransformer` (TF-IDF + one-hot +
+StandardScaler) wrapped in a single `Pipeline`, same 3-fold stratified CV,
+same `f1_macro` scoring, same `class_weight="balanced"` instead of the
+SMOTE arrays. The base `SVC` is wrapped in `OneVsRestClassifier` so
+multi-class training matches the one-vs-rest strategy committed to in the
+proposal (sklearn's `SVC` defaults to one-vs-one internally; only the
+explicit wrapper trains 12 binary SVMs, one per category).
 
-Whichever they choose, they should call into `src/evaluation.py` so the
-metrics and confusion matrices are formatted identically across all three
-models for the comparison table in the report.
+Per the proposal, the grid covers both kernels:
+
+```python
+DEFAULT_GRID = [
+    {
+        "classifier__estimator__kernel": ["linear"],
+        "classifier__estimator__C":      [0.1, 1.0, 10.0],
+    },
+    {
+        "classifier__estimator__kernel": ["rbf"],
+        "classifier__estimator__C":      [1.0, 10.0, 100.0],
+        "classifier__estimator__gamma":  ["scale", 0.1, 0.01],
+    },
+]
+```
+
+**Held-out test results (12-class, 2,462 rows):**
+
+| Metric            | Value  |
+|-------------------|--------|
+| Accuracy          | 0.8944 |
+| Precision (macro) | 0.7246 |
+| Recall (macro)    | 0.7344 |
+| F1 (macro)        | 0.7266 |
+| F1 (weighted)     | 0.9019 |
+| Composite score   | 0.7448 |
+| Train time        | ~25s   |
+| Predict time      | <0.8s  |
+
+Best hyperparameters found: `kernel="linear"`, `C=0.1`. The same per-class
+pattern as RF holds — near-perfect F1 on the (denoised) Personal
+Transactions classes, weak F1 on the Personal Finance-only classes
+(`Travel`, `Investment`, `Other`) for the same data-source reason
+described above.
+
+### MLP (Kien)
+
+Stub to come. Will load `data/processed/{X_train,X_test}.npz` +
+`y_*.npy` produced by `scripts/prepare_features.py` (the SMOTE-balanced
+training arrays) or build its own Pipeline like the RF/SVM scripts. Should
+call into `src/evaluation.py` so the metrics and confusion matrices match
+the format used by the other two models.
 
 ## Reproducibility
 
