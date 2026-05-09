@@ -13,10 +13,14 @@ Why SVM doesn't use the SMOTE-balanced training arrays:
     would leak synthetic neighbours across CV folds.
 
 Kernels searched:
-    Per the proposal we test both linear and RBF kernels. ``decision_-
-    function_shape='ovr'`` enforces the one-vs-rest strategy described in
-    Section 3.2. We tune the regularization parameter ``C`` for both
-    kernels and ``gamma`` for RBF.
+    Per the proposal we test both linear and RBF kernels. The base
+    :class:`~sklearn.svm.SVC` is wrapped in
+    :class:`~sklearn.multiclass.OneVsRestClassifier` so multi-class
+    training matches the one-vs-rest strategy described in Section 3.2
+    (sklearn's ``SVC`` defaults to one-vs-one internally; only the
+    explicit wrapper trains 12 binary SVMs, one per category). We tune
+    the regularization parameter ``C`` for both kernels and ``gamma``
+    for RBF.
 
 Outputs (in ``models/svm/``):
     svm_model.joblib                - the fitted Pipeline
@@ -43,6 +47,7 @@ import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
+from sklearn.multiclass import OneVsRestClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
 from sklearn.svm import SVC
@@ -88,17 +93,17 @@ def build_pipeline(*, random_state: int = config.RANDOM_SEED) -> Pipeline:
         sparse_threshold=1.0,
     )
 
-    svm = SVC(
+    base_svm = SVC(
         kernel="rbf",
         C=1.0,
         gamma="scale",
         class_weight="balanced",
-        decision_function_shape="ovr",
         cache_size=500,
         random_state=random_state,
     )
+    classifier = OneVsRestClassifier(base_svm, n_jobs=1)
 
-    return Pipeline(steps=[("preprocessor", preprocessor), ("classifier", svm)])
+    return Pipeline(steps=[("preprocessor", preprocessor), ("classifier", classifier)])
 
 
 # ---------------------------------------------------------------------------
@@ -106,27 +111,29 @@ def build_pipeline(*, random_state: int = config.RANDOM_SEED) -> Pipeline:
 # ---------------------------------------------------------------------------
 # A list of dicts lets GridSearchCV explore kernel-specific hyperparameters
 # without wasting fits on (linear + gamma) combinations that ignore gamma.
+# Keys use ``classifier__estimator__*`` because the SVC sits inside a
+# OneVsRestClassifier, which itself sits inside the Pipeline.
 DEFAULT_GRID: list[dict[str, list]] = [
     {
-        "classifier__kernel": ["linear"],
-        "classifier__C":      [0.1, 1.0, 10.0],
+        "classifier__estimator__kernel": ["linear"],
+        "classifier__estimator__C":      [0.1, 1.0, 10.0],
     },
     {
-        "classifier__kernel": ["rbf"],
-        "classifier__C":      [1.0, 10.0, 100.0],
-        "classifier__gamma":  ["scale", 0.1, 0.01],
+        "classifier__estimator__kernel": ["rbf"],
+        "classifier__estimator__C":      [1.0, 10.0, 100.0],
+        "classifier__estimator__gamma":  ["scale", 0.1, 0.01],
     },
 ]
 
 QUICK_GRID: list[dict[str, list]] = [
     {
-        "classifier__kernel": ["linear"],
-        "classifier__C":      [1.0, 10.0],
+        "classifier__estimator__kernel": ["linear"],
+        "classifier__estimator__C":      [1.0, 10.0],
     },
     {
-        "classifier__kernel": ["rbf"],
-        "classifier__C":      [1.0, 10.0],
-        "classifier__gamma":  ["scale"],
+        "classifier__estimator__kernel": ["rbf"],
+        "classifier__estimator__C":      [1.0, 10.0],
+        "classifier__estimator__gamma":  ["scale"],
     },
 ]
 
