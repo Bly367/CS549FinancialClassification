@@ -315,11 +315,46 @@ described above.
 
 ### MLP (Kien)
 
-Stub to come. Will load `data/processed/{X_train,X_test}.npz` +
-`y_*.npy` produced by `scripts/prepare_features.py` (the SMOTE-balanced
-training arrays) or build its own Pipeline like the RF/SVM scripts. Should
-call into `src/evaluation.py` so the metrics and confusion matrices match
-the format used by the other two models.
+Built in scripts/train_mlp.py. Mirrors the Random Forest and SVM scripts for an apples-to-apples comparison: the same ColumnTransformer (TF-IDF + one-hot + StandardScaler) is wrapped in a single Pipeline, followed by a TruncatedSVD step to convert the high-dimensional sparse feature matrix into a dense representation suitable for neural network training.
+
+The classifier is an MLPClassifier with ReLU activation and the Adam optimizer, trained with early stopping based on validation loss to prevent overfitting. Hyperparameters are tuned using 3-fold stratified GridSearchCV with scoring set to f1_macro, ensuring that performance across all classes—including minority classes—is taken into account.
+
+The hyperparameter grid includes:
+```python
+DEFAULT_GRID = [
+    {
+        "svd__n_components": [200, 300],
+        "classifier__hidden_layer_sizes": [(256, 128), (256, 128, 64)],
+        "classifier__alpha": [1e-4, 1e-3],
+        "classifier__learning_rate_init": [1e-3],
+    },
+]
+```
+**Held-out test results (12-class, 2,462 rows):**
+
+| Metric            | Value  |
+|-------------------|--------|
+| Accuracy          | 0.8936 |
+| Precision (macro) | 0.7620 |
+| Recall (macro)    | 0.7535 |
+| F1 (macro)        | 0.7468 |
+| F1 (weighted)     | 0.8988 |
+| Composite score   | 0.7670 |
+| Train time        | ~19s   |
+| Predict time      | <0.02s |
+
+Best hyperparameters found:
+`svd__n_components=200`
+`hidden_layer_sizes=(256, 128)`
+`alpha=0.001`
+`learning_rate_init=0.001`
+
+Per-class observations:
+
+Strong performance on high-frequency categories such as Food & Dining, Transfers, and Transportation, where clear textual patterns exist in transaction descriptions.
+Moderate improvement over SVM on some minority classes due to the ability to model non-linear feature interactions.
+Lower performance on Travel, Investment, and Other, consistent with the other models, due to limited data and weaker signal in the Personal Finance dataset.
+Increasing svd__n_components and hidden_layer_sizes significantly increased training time while providing minimal or no improvement in F1-macro, indicating diminishing returns from larger model configurations.
 
 ## Reproducibility
 
