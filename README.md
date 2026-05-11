@@ -28,7 +28,8 @@ ProjectCS549/
 │   ├── build_dataset.py                  # stage 1: produce merged_clean.csv + train/test split
 │   ├── prepare_features.py               # stage 2: fit transformers, save feature arrays
 │   ├── train_random_forest.py            # stage 3a: Random Forest (Brian)
-│   └── train_svm.py                      # stage 3b: Support Vector Machine (Bryce)
+│   ├── train_svm.py                      # stage 3b: Support Vector Machine (Bryce)
+│   └── train_MLP.py                      # stage 3c: Multi-Layered perceptron (Kien)
 ├── notebooks/
 │   └── 01_exploratory_analysis.ipynb
 ├── tests/
